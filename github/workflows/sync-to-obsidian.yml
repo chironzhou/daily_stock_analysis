@@ -1,0 +1,57 @@
+name: 同步分析结果到 Obsidian Vault
+
+on:
+  # 在主工作流完成后运行
+  workflow_run:
+    workflows: ["每日股票分析"]
+    types:
+      - completed
+  workflow_dispatch:  # 也支持手动触发
+
+jobs:
+  sync-to-vault:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      # 1. 检出分析仓库（获取生成的文件）
+      - name: 检出分析结果
+        uses: actions/checkout@v4
+
+      # 2. 配置 git
+      - name: 配置 Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+
+      # 3. 克隆目标 Obsidian vault 仓库
+      - name: 克隆 Obsidian Vault
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+          TARGET_REPO: ${{ secrets.TARGET_REPO }}
+        run: |
+          git clone https://x-access-token:${GH_PAT}@github.com/${TARGET_REPO}.git target-vault
+
+      # 4. 复制生成的分析文件到 vault
+      - name: 复制分析文件
+        run: |
+          # 如果 output 目录存在，复制文件
+          if [ -d "output" ]; then
+            mkdir -p target-vault/股票分析/每日复盘
+            mkdir -p target-vault/股票分析/股票池
+            
+            # 复制每日复盘
+            cp output/daily-*.md target-vault/股票分析/每日复盘/ 2>/dev/null || true
+            
+            # 复制个股分析
+            cp output/stock-*.md target-vault/股票分析/股票池/ 2>/dev/null || true
+            
+            # 复制大盘分析
+            cp output/market-*.md target-vault/股票分析/ 2>/dev/null || true
+          fi
+
+      # 5. 提交并推送到 vault 仓库
+      - name: 提交到 Vault
+        run: |
+          cd target-vault
+          git add .
+          git diff --staged --quiet || git commit -m "🤖 自动更新股票分析 $(date '+%Y-%m-%d %H:%M:%S')" && git push origin main
