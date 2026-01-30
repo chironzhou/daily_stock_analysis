@@ -42,15 +42,45 @@ jobs:
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           
+          # 调试：列出 reports 目录的所有文件
+          echo "=== Reports 目录内容 ==="
+          ls -la reports/
+          echo "========================"
+          
           # 克隆 vault 仓库
           git clone https://x-access-token:${GH_PAT}@github.com/${TARGET_REPO}.git vault
           
-          # 创建目录并复制报告
+          # 创建目录
           mkdir -p vault/股票分析/每日复盘
-          cp reports/report_*.md vault/股票分析/每日复盘/ 2>/dev/null || true
-          cp reports/market_review_*.md vault/股票分析/ 2>/dev/null || true
+          
+          # 复制所有 md 文件（不管文件名是什么）
+          if [ -d "reports" ]; then
+            for file in reports/*.md; do
+              if [ -f "$file" ]; then
+                filename=$(basename "$file")
+                echo "复制文件: $filename"
+                
+                # 判断是每日复盘还是大盘复盘
+                if [[ $filename == *"market"* ]]; then
+                  cp "$file" vault/股票分析/
+                else
+                  # 添加 frontmatter
+                  date=$(date +%Y-%m-%d)
+                  {
+                    echo "---"
+                    echo "date: $date"
+                    echo "type: 每日复盘"
+                    echo "---"
+                    echo ""
+                    cat "$file"
+                  } > "vault/股票分析/每日复盘/$date.md"
+                fi
+              fi
+            done
+          fi
           
           # 提交并推送
           cd vault
           git add .
           git diff --staged --quiet || git commit -m "🤖 更新分析 $(date '+%Y-%m-%d %H:%M')" && git push origin main
+
